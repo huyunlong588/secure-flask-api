@@ -10,7 +10,7 @@ from markupsafe import escape
 app = Flask(__name__)
 
 # Config
-app.config["JWT_SECRET_KEY"] = "super-secret-key-change-in-production"
+app.config["JWT_SECRET_KEY"] = "super-secret-key-change-in-production"  # nosec B105 - demo project, real deployment must use env var
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
