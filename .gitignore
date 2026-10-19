@@ -12,6 +12,10 @@ instance/
 .DS_Store
 Thumbs.db
 
+# Scan reports (generated in CI)
+bandit-report.json
+safety-report.json
+
 # IDE
 .vscode/
 .idea/
