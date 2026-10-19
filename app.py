@@ -1,21 +1,17 @@
-from flask import Flask, jsonify, request
-from flask_jwt_extended import (
-    JWTManager, create_access_token,
-    jwt_required, get_jwt_identity
-)
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import bcrypt
-from markupsafe import escape
+import bleach
 
 app = Flask(__name__)
 
 # Config
-app.config["JWT_SECRET_KEY"] = "super-secret-key-change-in-production"  # nosec B105 - demo project, real deployment must use env var
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-jwt = JWTManager(app)
+app.config["JWT_SECRET_KEY"] = "super-secret-key-change-in-production-12345"
 db = SQLAlchemy(app)
+jwt = JWTManager(app)
 
 # Database Model
 class User(db.Model):
@@ -23,20 +19,14 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
 
-    def to_dict(self):
-        # escape user data to prevent XSS when returned to client
-        return {
-            "id": self.id,
-            "username": escape(self.username)
-        }
-
-# Create DB and test user
+# Create tables & seed test user
 with app.app_context():
     db.create_all()
-    # create test user: admin / Password123
-    if not User.query.filter_by(username="admin").first():
-        hashed_pw = bcrypt.hashpw(b"Password123", bcrypt.gensalt())
-        new_user = User(username="admin", password_hash=hashed_pw.decode("utf-8"))
+    # Only create test user if not exists
+    if not User.query.filter_by(username="testuser").first():
+        raw_pw = b"TestPass123!"
+        hashed = bcrypt.hashpw(raw_pw, bcrypt.gensalt())
+        new_user = User(username="testuser", password_hash=hashed.decode("utf-8"))
         db.session.add(new_user)
         db.session.commit()
 
@@ -44,38 +34,45 @@ with app.app_context():
 @app.route("/auth/login", methods=["POST"])
 def login():
     data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
+    if not data or "username" not in data or "password" not in data:
+        return jsonify({"msg": "Missing username or password"}), 400
 
-    user = User.query.filter_by(username=username).first()
-    if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
-        return jsonify({"msg": "Invalid username or password"}), 401
+    user = User.query.filter_by(username=data["username"]).first()
+    if not user:
+        return jsonify({"msg": "Bad username or password"}), 401
 
-    access_token = create_access_token(identity=str(user.id))
-    return jsonify(access_token=access_token), 200
+    if bcrypt.checkpw(data["password"].encode("utf-8"), user.password_hash.encode("utf-8")):
+        access_token = create_access_token(identity=user.username)
+        return jsonify(access_token=access_token), 200
+    return jsonify({"msg": "Bad username or password"}), 401
 
-# 2. GET /api/data (protected)
+# 2. GET /api/data (protected, return user list)
 @app.route("/api/data", methods=["GET"])
 @jwt_required()
 def get_data():
-    current_user_id = get_jwt_identity()
     users = User.query.all()
-    user_list = [u.to_dict() for u in users]
-    return jsonify({
-        "msg": "Protected user data",
-        "data": user_list,
-        "request_user_id": escape(str(current_user_id))
-    }), 200
+    result = []
+    for u in users:
+        # XSS protection: sanitize user output
+        safe_name = bleach.clean(u.username)
+        result.append({"id": u.id, "username": safe_name})
+    return jsonify(users=result), 200
 
-# 3. Custom endpoint: GET /api/user/<user_id> (protected)
-@app.route("/api/user/<int:user_id>", methods=["GET"])
+# 3. Custom endpoint: POST /api/post (protected, create simple post)
+@app.route("/api/post", methods=["POST"])
 @jwt_required()
-def get_single_user(user_id):
-    # SQLAlchemy ORM query, no string concat, prevent SQLi
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"msg": "User not found"}), 404
-    return jsonify(user.to_dict()), 200
+def create_post():
+    current_user = get_jwt_identity()
+    req_data = request.get_json()
+    if not req_data or "content" not in req_data:
+        return jsonify({"msg": "Missing post content"}), 400
+    # XSS sanitize user input
+    clean_content = bleach.clean(req_data["content"])
+    return jsonify({
+        "msg": "Post saved",
+        "author": current_user,
+        "content": clean_content
+    }), 201
 
 if __name__ == "__main__":
     app.run(debug=False)

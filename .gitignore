@@ -1,21 +1,6 @@
-# Python
 venv/
 __pycache__/
-*.pyc
 *.db
-instance/
-
-# Local-only GitHub workflow (using GitLab CI for this project)
-.github/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Scan reports (generated in CI)
+*.log
 bandit-report.json
-safety-report.json
-
-# IDE
-.vscode/
-.idea/
+.env
