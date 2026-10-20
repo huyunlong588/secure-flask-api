@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -9,7 +11,9 @@ app = Flask(__name__)
 # Config
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["JWT_SECRET_KEY"] = "super-secret-key-change-in-production-12345"
+app.config["JWT_SECRET_KEY"] = os.environ.get(
+    "JWT_SECRET_KEY", "dev-only-secret-change-me-0123456789abcdef"
+)
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
